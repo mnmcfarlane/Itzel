@@ -1,0 +1,16 @@
+import pyttsx3
+
+tts = pyttsx3.init()
+
+voices = tts.getProperty("voices")
+
+for index, voice in enumerate(voices):
+    print(index, voice.name)
+
+tts.setProperty("voice", voices[0].id)
+
+tts.setProperty("rate", 190)
+
+tts.say("Hello Matthew. This is Itzel.")
+
+tts.runAndWait()

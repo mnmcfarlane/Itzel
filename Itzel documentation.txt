@@ -1,0 +1,6 @@
+Name:____Webcame object detector (Computer Vison)______
+
+An application that uses object detection scan for objects and flags any contraband that may be in frame to keep the user safe. 
+
+
+

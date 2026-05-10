@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Images generated during runtime
+current_view.jpg
+
+# YOLO model weights
+*.pt
+
+# ONNX model files
+*.onnx
+
+# Virtual environments
+venv/
+.env/
+
+# VSCode settings
+.vscode/
+
+# OS junk files
+.DS_Store
+Thumbs.db
