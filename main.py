@@ -9,6 +9,7 @@ import speech_recognition as sr
 import threading
 import pyttsx3
 import time
+from queue import Queue
 from ultralytics import YOLO
 
 
@@ -23,7 +24,6 @@ WAKE_PHRASES = {
     "hey assistant"
 }
 
-
 THREAT_OBJECTS = {
     "knife",
     "scissors",
@@ -31,7 +31,9 @@ THREAT_OBJECTS = {
 }
 
 latest_question = None
-pending_speech = None
+vision_busy = False
+
+speech_queue = Queue()
 
 
 # ==================================================
@@ -57,21 +59,38 @@ tts = pyttsx3.init()
 
 voices = tts.getProperty("voices")
 
+print("\nAvailable voices:")
 for index, voice in enumerate(voices):
     print(index, voice.name)
 
-tts.setProperty("voice", voices[1].id)
-tts.setProperty("rate", 185)
+if len(voices) > 1:
+    tts.setProperty("voice", voices[1].id)
+else:
+    tts.setProperty("voice", voices[0].id)
+
+tts.setProperty("rate", 155)
 tts.setProperty("volume", 1.0)
 
 
 # ==================================================
-# SPEAKING FUNCTION
+# SPEECH QUEUE / NON-BLOCKING SPEAKING
 # ==================================================
 
+def speech_worker():
+    while True:
+        text = speech_queue.get()
+        print("Itzel:", text)
+        tts.say(text)
+        tts.runAndWait()
+        speech_queue.task_done()
+
+
 def speak(text):
-    tts.say(text)
-    tts.runAndWait()
+    speech_queue.put(text)
+
+
+speech_thread = threading.Thread(target=speech_worker, daemon=True)
+speech_thread.start()
 
 
 # ==================================================
@@ -79,20 +98,50 @@ def speak(text):
 # ==================================================
 
 def ask_vision_model(image_path, question):
-    with open(image_path, "rb") as img:
-        image_base64 = base64.b64encode(img.read()).decode("utf-8")
+    try:
+        with open(image_path, "rb") as img:
+            image_base64 = base64.b64encode(img.read()).decode("utf-8")
 
-    response = requests.post(
-        "http://localhost:11434/api/generate",
-        json={
-            "model": "minicpm-v",
-            "prompt": question,
-            "images": [image_base64],
-            "stream": False
-        }
-    )
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "minicpm-v",
+                "prompt": question,
+                "images": [image_base64],
+                "stream": False
+            },
+            timeout=45
+        )
 
-    return response.json()["response"]
+        response.raise_for_status()
+
+        data = response.json()
+        return data.get("response", "I could not find a response from the vision model.")
+
+    except requests.exceptions.ConnectionError:
+        return "My vision model is offline, boss. Ollama is not running right now."
+
+    except requests.exceptions.Timeout:
+        return "The vision model took too long to respond, boss."
+
+    except Exception as error:
+        return f"Something went wrong with my vision system, boss. Error: {error}"
+
+
+# ==================================================
+# BACKGROUND VISION QUESTION WORKER
+# ==================================================
+
+def process_vision_question(image_path, question):
+    global vision_busy
+
+    print("Processing vision question in background...")
+    answer = ask_vision_model(image_path, question)
+
+    print("You asked:", question)
+    speak(answer)
+
+    vision_busy = False
 
 
 # ==================================================
@@ -131,7 +180,6 @@ def listen_to_microphone():
 
 def voice_listener():
     global latest_question
-    global pending_speech
 
     while True:
         speech = listen_to_microphone()
@@ -139,8 +187,7 @@ def voice_listener():
         print("Detected speech:", speech)
 
         if speech in WAKE_PHRASES:
-            print("Itzel: Yes boss")
-            pending_speech = "Yes boss"
+            speak("Yes boss")
 
             question = listen_to_microphone()
 
@@ -244,6 +291,44 @@ while True:
 
 
     # ==============================================
+    # VISION THINKING STATUS
+    # ==============================================
+
+    if vision_busy:
+        cv2.putText(
+            annotated_frame,
+            "ITZEL IS THINKING...",
+            (30, 150),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 255),
+            2
+        )
+
+
+    # ==============================================
+    # QUESTION ANSWERING MODE - NOW NON-BLOCKING
+    # ==============================================
+
+    if latest_question and not vision_busy:
+        question_to_process = latest_question
+        latest_question = None
+        vision_busy = True
+
+        cv2.imwrite("current_view.jpg", frame)
+
+        speak("Let me look.")
+
+        vision_thread = threading.Thread(
+            target=process_vision_question,
+            args=("current_view.jpg", question_to_process),
+            daemon=True
+        )
+
+        vision_thread.start()
+
+
+    # ==============================================
     # DISPLAY WINDOW
     # ==============================================
 
@@ -260,35 +345,6 @@ while True:
     )
 
     cv2.imshow("Itzel Vision", square_frame)
-
-
-    # ==============================================
-    # PENDING SPEECH OUTPUT
-    # ==============================================
-
-    if pending_speech:
-        speak(pending_speech)
-        pending_speech = None
-
-
-    # ==============================================
-    # QUESTION ANSWERING MODE
-    # ==============================================
-
-    if latest_question:
-        cv2.imwrite("current_view.jpg", frame)
-
-        answer = ask_vision_model(
-            "current_view.jpg",
-            latest_question
-        )
-
-        print("You asked:", latest_question)
-        print("Itzel:", answer)
-
-        speak(answer)
-
-        latest_question = None
 
 
     # ==============================================
