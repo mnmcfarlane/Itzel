@@ -225,8 +225,14 @@ prev_time = time.time()
 # MAIN PROGRAM LOOP
 # ==================================================
 
+
+
+frame_count = 0
+results = None
+
 while True:
     ret, frame = cap.read()
+    frame_count += 1
 
     if not ret:
         print("Camera error.")
@@ -237,10 +243,12 @@ while True:
     # OBJECT DETECTION
     # ==============================================
 
-    results = model(frame, verbose=False)
+    
+
+    if frame_count % 3 == 0 or results is None:
+        results = model(frame, verbose=False)
 
     annotated_frame = results[0].plot()
-
 
     # ==============================================
     # FPS COUNTER
