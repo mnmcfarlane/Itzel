@@ -30,6 +30,12 @@ THREAT_OBJECTS = {
     "baseball bat"
 }
 
+THREAT_LEVELS = {
+    "knife": "HIGH",
+    "scissors": "MEDIUM",
+    "baseball bat": "HIGH"
+}
+
 latest_question = None
 vision_busy = False
 
@@ -103,14 +109,14 @@ def ask_vision_model(image_path, question):
             image_base64 = base64.b64encode(img.read()).decode("utf-8")
 
         response = requests.post(
-            "http://localhost:11434/api/generate",
+            "http://192.168.1.236:11434/api/generate",
             json={
                 "model": "minicpm-v",
                 "prompt": question,
                 "images": [image_base64],
                 "stream": False
             },
-            timeout=45
+            timeout=120
         )
 
         response.raise_for_status()
@@ -272,7 +278,6 @@ while True:
     # ==============================================
     # THREAT DETECTION
     # ==============================================
-
     detected_threats = []
 
     for box in results[0].boxes:
@@ -280,7 +285,11 @@ while True:
         label = model.names[class_id]
 
         if label in THREAT_OBJECTS:
-            detected_threats.append(label)
+            threat_level = THREAT_LEVELS[label]
+
+            detected_threats.append(
+                f"{label} ({threat_level})"
+            )
 
     if detected_threats:
         warning_text = "THREAT DETECTED: " + ", ".join(set(detected_threats))
